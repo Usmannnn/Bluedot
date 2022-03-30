@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { StyleSheet, Dimensions, View } from 'react-native'
+import { StyleSheet, Dimensions, View, Text, PixelRatio } from 'react-native'
 import MapView, { Polyline } from 'react-native-maps';
 import FreeDriveBar from '../components/FreeDriveBar';
 import MyLocation from '../components/MyLocation';
 import * as Location from 'expo-location';
+import { getItem, addToStore, removeAll } from '../utils/methods'
+
 
 const Tracking = () => {
 
@@ -11,15 +13,19 @@ const Tracking = () => {
 	const [currentPosition, setCurrentPosition] = useState(null)
 	const [foreground, requestForegroundPermission] = Location.useForegroundPermissions();
 	const [drivingCoordinates, setDrivingCoordinates] = useState([])
+	const [totalDistance, setTotalDistance] = useState(0)
+
 
 	useEffect(async () => {
-		await requestForegroundPermission()
+		await requestForegroundPermission().then(async () => {
+			const { coords } = await Location.getCurrentPositionAsync({})
+			setCurrentPosition({ latitude: coords.latitude, longitude: coords.longitude })
+		})
 		// ask background
 	}, [])
 
 	const getCurrentPosition = async () => {
 		const { coords } = await Location.getCurrentPositionAsync({})
-		console.log(coords)
 		setCurrentPosition({ latitude: coords.latitude, longitude: coords.longitude })
 		mapRef.current.animateToRegion({
 			latitude: coords.latitude,
@@ -29,20 +35,23 @@ const Tracking = () => {
 		});
 	}
 
-	useEffect(() => {
-		getCurrentPosition()
+	useEffect(async () => {
+		await getCurrentPosition()
 		// fetch(`https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=40.8538996,29.3002546&radius=1000&type=point_of_interest&keyword=divvy&key=AIzaSyA8Fc0HE-Vphp5UVgmFlPa0Od_-w8H2YJI`)
 		// 	.then(res => res.json())
 		// 	.then(res => console.log(res))
 	}, [])
 
-	const toggleFreeDriving = () => {
-		if (drivingCoordinates.length > 0) setDrivingCoordinates([])
+
+	const toggleFreeDriving = async () => {
+		if (drivingCoordinates.length > 0) {
+			addToStore([{ coordinates: drivingCoordinates, totalDistance, image: takeScreenShot() }])
+			setDrivingCoordinates([])
+		}
 		else setDrivingCoordinates([currentPosition])
 	}
 
 	useEffect(() => {
-		console.log(drivingCoordinates.length)
 		calculateDistance(drivingCoordinates)
 	}, [drivingCoordinates])
 
@@ -53,7 +62,7 @@ const Tracking = () => {
 		for (let i = 1; i < arr.length; i++) {
 			totalDistance += haversine(arr[i - 1], arr[i])
 		}
-		console.log(totalDistance)
+		setTotalDistance((totalDistance / 1000).toFixed(2))
 	}
 
 	function haversine(coords1, coords2) {
@@ -70,7 +79,6 @@ const Tracking = () => {
 
 		return R * c; // in metres
 	}
-
 
 	return (
 		<View style={styles.container}>
@@ -112,6 +120,9 @@ const Tracking = () => {
 				<FreeDriveBar onAction={() => toggleFreeDriving()} />
 				<MyLocation onAction={() => getCurrentPosition()} />
 			</View>
+			<View style={styles.distanceContainer}>
+				<Text style={{ color: "white", fontWeight: "bold" }}>{totalDistance} Km</Text>
+			</View>
 		</View>
 	)
 }
@@ -133,5 +144,16 @@ const styles = StyleSheet.create({
 		right: 70,
 		flexDirection: "row",
 		justifyContent: "space-between"
+	},
+	distanceContainer: {
+		position: "absolute",
+		top: 30,
+		right: 20,
+		backgroundColor: "#333C83",
+		width: 80,
+		height: 40,
+		borderRadius: 10,
+		justifyContent: "center",
+		alignItems: "center"
 	}
 })
