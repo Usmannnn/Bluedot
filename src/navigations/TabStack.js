@@ -5,6 +5,7 @@ import Transactions from "../screens/Transactions";
 import Tracking from "../screens/Tracking";
 import Tax from "../screens/Tax";
 import { Ionicons, Feather } from 'react-native-vector-icons';
+import TripsHeader from "../components/TripsHeader";
 
 
 const Tab = createBottomTabNavigator();
@@ -32,8 +33,8 @@ export const TabStack = () => {
             })}
         >
             <Tab.Screen name="Home" component={Home} options={{ headerTitleAlign: "center" }} />
-            <Tab.Screen name="Trips" component={Trips} options={{ headerTitleAlign: "center" }} />
-            <Tab.Screen name="Tracking" component={Tracking} options={{ headerShown: false }} />
+            <Tab.Screen name="Trips" component={Trips} options={{ header: () => <TripsHeader /> }} />
+            <Tab.Screen name="Tracking" component={Tracking} options={{ headerShown: false, tabBarHideOnKeyboard: true }} />
             <Tab.Screen name="Transactions" component={Transactions} options={{ headerTitleAlign: "center" }} />
             <Tab.Screen name="Tax" component={Tax} options={{ headerTitleAlign: "center" }} />
         </Tab.Navigator>

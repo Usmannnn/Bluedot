@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, AppState } from 'react-native'
+import { StyleSheet, Text, View, ScrollView, Image, AppState } from 'react-native'
 import React, { useEffect, useState } from 'react'
 import { getItem } from '../utils/methods'
 
@@ -28,16 +28,35 @@ const Trips = () => {
 			if (nextAppState === 'active') setCookie(false)
 		})
 
-		return () => {
-			subscription.remove();
-		}
+		return () => subscription.remove();
 	}, []);
+
+
+	const TripCard = ({ item, index }) => {
+
+		return (
+			<View style={styles.cardContainer} key={index}>
+				<View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 10, paddingBottom: 15 }}>
+					<Text>{item.totalDistance} Km</Text>
+					<Text>{item.date}</Text>
+				</View>
+				<View style={{ flex: 1, height: 200}}>
+					<Image
+						source={{ uri: item.screenshot }}
+						style={{ ...StyleSheet.absoluteFillObject }}
+					/>
+				</View>
+			</View>
+		)
+	}
 
 	return (
 		<View style={styles.container}>
-			{data && data.map((item, index) => {
-				return <Text key={index}>{item.id}</Text>
-			})}
+			<ScrollView>
+				{data && data.map((item, index) => {
+					return TripCard({ item, index })
+				})}
+			</ScrollView>
 		</View>
 	)
 }
@@ -47,6 +66,14 @@ export default Trips
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: "pink"
+	},
+	cardContainer: {
+		backgroundColor: "white",
+		padding: 10,
+		marginTop: 15,
+		elevation: 4,
+		marginBottom: 10,
+		marginHorizontal: 20,
+		borderRadius: 10
 	}
 })

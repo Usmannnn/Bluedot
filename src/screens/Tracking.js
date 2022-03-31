@@ -1,28 +1,44 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { StyleSheet, Dimensions, View, Text, PixelRatio } from 'react-native'
+import { StyleSheet, Dimensions, View, Text, TouchableOpacity, AppState } from 'react-native'
 import MapView, { Polyline } from 'react-native-maps';
 import FreeDriveBar from '../components/FreeDriveBar';
 import MyLocation from '../components/MyLocation';
 import * as Location from 'expo-location';
-import { getItem, addToStore, removeAll } from '../utils/methods'
+import { addToStore, calculateDistance, removeAll, takeScreenshot } from '../utils/methods'
+import * as TaskManager from 'expo-task-manager';
+import Search from '../components/Search';
+
+
+const LOCATION_TRACKING = 'location-tracking';
 
 
 const Tracking = () => {
 
 	const mapRef = useRef();
 	const [currentPosition, setCurrentPosition] = useState(null)
-	const [foreground, requestForegroundPermission] = Location.useForegroundPermissions();
+	const [permissons, setPermissions] = useState(false)
 	const [drivingCoordinates, setDrivingCoordinates] = useState([])
 	const [totalDistance, setTotalDistance] = useState(0)
+	const [driveMode, setDriveMode] = useState(false)
 
 
-	useEffect(async () => {
-		await requestForegroundPermission().then(async () => {
+	useEffect(() => {
+		(async () => {
+			let { status } = await Location.requestForegroundPermissionsAsync();
+			if (status !== 'granted') {
+				setErrorMsg('Permission to access location was denied');
+				return;
+			}
+
 			const { coords } = await Location.getCurrentPositionAsync({})
 			setCurrentPosition({ latitude: coords.latitude, longitude: coords.longitude })
-		})
-		// ask background
+
+			let backPerm = await Location.requestBackgroundPermissionsAsync();
+			setPermissions(backPerm);
+
+		})();
 	}, [])
+
 
 	const getCurrentPosition = async () => {
 		const { coords } = await Location.getCurrentPositionAsync({})
@@ -30,59 +46,80 @@ const Tracking = () => {
 		mapRef.current.animateToRegion({
 			latitude: coords.latitude,
 			longitude: coords.longitude,
-			latitudeDelta: 1,
-			longitudeDelta: 1,
+			latitudeDelta: 0.008,
+			longitudeDelta: 0.008,
 		});
 	}
 
-	useEffect(async () => {
-		await getCurrentPosition()
-		// fetch(`https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=40.8538996,29.3002546&radius=1000&type=point_of_interest&keyword=divvy&key=AIzaSyA8Fc0HE-Vphp5UVgmFlPa0Od_-w8H2YJI`)
-		// 	.then(res => res.json())
-		// 	.then(res => console.log(res))
-	}, [])
+	const setSelectedLocation = (coords) => {
+		console.log(coords, "sad")
+		mapRef.current.animateToRegion({
+			latitude: coords.latitude,
+			longitude: coords.longitude,
+			latitudeDelta: 0.008,
+			longitudeDelta: 0.008,
+		});
+	}
+
+	useEffect(() => {
+		AppState.addEventListener("change", async (nextAppState) => {
+			if (nextAppState === 'active') {
+				console.log("active")
+				TaskManager.unregisterAllTasksAsync()
+				await getCurrentPosition()
+			}
+			else if (nextAppState == 'background' && driveMode) {
+				console.log("background", driveMode)
+				await Location.startLocationUpdatesAsync(LOCATION_TRACKING, {
+					accuracy: Location.Accuracy.BestForNavigation,
+					timeInterval: 500,
+					distanceInterval: 1,
+					foregroundService: {
+						notificationTitle: 'Live Tracker',
+						notificationBody: 'Live Tracker is on.'
+					}
+				});
+			}
+			else TaskManager.unregisterAllTasksAsync()
+		})
+
+	}, [driveMode]);
+
+
+
 
 
 	const toggleFreeDriving = async () => {
 		if (drivingCoordinates.length > 0) {
-			addToStore([{ coordinates: drivingCoordinates, totalDistance, image: takeScreenShot() }])
+
+			let uri = await takeScreenshot()
+			console.log(uri, "in to")
+
+			setDriveMode(false)
+			addToStore([{
+				coordinates: drivingCoordinates,
+				totalDistance,
+				date: new Date().toDateString(),
+				screenshot: uri
+			}])
 			setDrivingCoordinates([])
 		}
-		else setDrivingCoordinates([currentPosition])
+		else {
+			setDriveMode(true)
+			setDrivingCoordinates([currentPosition])
+		}
 	}
 
 	useEffect(() => {
-		calculateDistance(drivingCoordinates)
+		setTotalDistance(calculateDistance(drivingCoordinates))
 	}, [drivingCoordinates])
 
 
-	const calculateDistance = (arr) => {
-
-		let totalDistance = 0
-		for (let i = 1; i < arr.length; i++) {
-			totalDistance += haversine(arr[i - 1], arr[i])
-		}
-		setTotalDistance((totalDistance / 1000).toFixed(2))
-	}
-
-	function haversine(coords1, coords2) {
-		const R = 6371e3; // metres
-		const φ1 = coords1.latitude * Math.PI / 180; // φ, λ in radians
-		const φ2 = coords2.latitude * Math.PI / 180;
-		const Δφ = (coords2.latitude - coords1.latitude) * Math.PI / 180;
-		const Δλ = (coords2.longitude - coords1.longitude) * Math.PI / 180;
-
-		const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-			Math.cos(φ1) * Math.cos(φ2) *
-			Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-		const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-		return R * c; // in metres
-	}
 
 	return (
 		<View style={styles.container}>
-			{foreground?.granted && currentPosition &&
+
+			{permissons && currentPosition &&
 				<MapView
 					ref={mapRef}
 					style={styles.map}
@@ -116,18 +153,41 @@ const Tracking = () => {
 					/>
 				</MapView>
 			}
+			<View style={styles.searchContainer}>
+				<Search currentPosition={currentPosition} setSelectedLocation={setSelectedLocation}/>
+			</View>
 			<View style={styles.bottomContentContainer}>
 				<FreeDriveBar onAction={() => toggleFreeDriving()} />
 				<MyLocation onAction={() => getCurrentPosition()} />
 			</View>
-			<View style={styles.distanceContainer}>
+			{driveMode && <View style={styles.distanceContainer}>
 				<Text style={{ color: "white", fontWeight: "bold" }}>{totalDistance} Km</Text>
-			</View>
+			</View>}
 		</View>
 	)
 }
 
 export default Tracking
+
+
+
+TaskManager.defineTask(LOCATION_TRACKING, async ({ data, error }) => {
+	console.log("in back")
+	if (error) {
+		console.log('LOCATION_TRACKING task ERROR:', error);
+		return;
+	}
+	if (data) {
+		const { locations } = data;
+		let lat = locations[0].coords.latitude;
+		let long = locations[0].coords.longitude;
+
+		console.log(
+			`${new Date(Date.now()).toLocaleString()}: ${lat},${long}`
+		);
+	} else console.log("not data")
+});
+
 
 const styles = StyleSheet.create({
 	container: {
@@ -147,13 +207,20 @@ const styles = StyleSheet.create({
 	},
 	distanceContainer: {
 		position: "absolute",
-		top: 30,
+		top: 80,
 		right: 20,
 		backgroundColor: "#333C83",
 		width: 80,
 		height: 40,
-		borderRadius: 10,
+		borderRadius: 5,
 		justifyContent: "center",
 		alignItems: "center"
+	},
+	searchContainer: {
+		left: 10,
+		right: 10,
+		position: "absolute",
+		top: 10,
+		zIndex:10000
 	}
 })
